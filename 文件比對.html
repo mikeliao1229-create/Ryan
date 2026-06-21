@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文件比對</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --ink:#1e1b3a; --ink2:#3b3766; --muted:#6c6a8a; --faint:#9b99b5;
+  --indigo:#4f46e5; --violet:#7c3aed;
+  --add:#0f766e; --add-bg:rgba(16,185,129,.14); --add-bd:rgba(16,185,129,.42);
+  --rem:#be123c; --rem-bg:rgba(244,63,94,.13); --rem-bd:rgba(244,63,94,.40);
+  --mod:#b45309; --mod-bg:rgba(245,158,11,.15); --mod-bd:rgba(245,158,11,.44);
+  --glass:rgba(255,255,255,.55);
+  --glass-strong:rgba(255,255,255,.74);
+  --glass-bd:rgba(255,255,255,.65);
+  --line:rgba(76,70,140,.14);
+  --sh-sm:0 2px 10px rgba(40,33,90,.08);
+  --sh:0 12px 34px rgba(40,33,90,.15), inset 0 1px 0 rgba(255,255,255,.65);
+  --sh-lg:0 26px 64px rgba(40,33,90,.22), inset 0 1px 0 rgba(255,255,255,.7);
+  --radius:22px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased;
+  background:linear-gradient(135deg,#e7e9ff 0%,#f3eefe 42%,#fde9f8 100%);
+  height:100%;position:relative;overflow:hidden;
+}
+.blob{position:fixed;border-radius:50%;filter:blur(72px);opacity:.55;z-index:0;pointer-events:none}
+.blob.a{width:540px;height:540px;background:#a5b4fc;top:-170px;left:-130px}
+.blob.b{width:480px;height:480px;background:#f0abfc;bottom:-160px;right:-130px}
+.blob.c{width:380px;height:380px;background:#7dd3fc;top:42%;right:16%}
+.wrap{position:relative;z-index:1;max-width:1760px;margin:0 auto;padding:14px 24px;height:100vh;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+@supports(height:100dvh){.wrap{height:100dvh}}
+
+.glass{background:var(--glass);backdrop-filter:blur(18px) saturate(165%);-webkit-backdrop-filter:blur(18px) saturate(165%);
+  border:1px solid var(--glass-bd);box-shadow:var(--sh);border-radius:var(--radius)}
+.glass-strong{background:var(--glass-strong);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
+  border:1px solid var(--glass-bd);box-shadow:var(--sh-lg);border-radius:var(--radius)}
+
+.head{text-align:center;margin-bottom:16px}
+.head h1{font-size:23px;font-weight:800;letter-spacing:1px;background:linear-gradient(120deg,var(--indigo),var(--violet));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.head p{font-size:13px;color:var(--muted);margin-top:4px}
+
+.section{padding:14px;margin:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* 上傳 */
+.uploader{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 22px;text-align:center;
+  border:1.5px dashed rgba(79,70,229,.42);border-radius:18px;background:rgba(255,255,255,.4);transition:.18s;cursor:pointer}
+.uploader.over{background:rgba(99,102,241,.12);border-color:var(--indigo)}
+.uploadbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px;cursor:pointer;transition:.18s}
+.uploadbar.over{background:rgba(99,102,241,.16)}
+.uploadbar .filelist{margin-top:0;justify-content:flex-start}
+.uploader .big{font-size:18px;font-weight:800;margin-bottom:6px}
+.uploader .hint{font-size:13px;color:var(--muted);margin-bottom:20px;max-width:520px}
+.btn{font-family:inherit;font-weight:700;font-size:14px;border-radius:13px;padding:12px 22px;cursor:pointer;border:1px solid transparent;transition:.16s;white-space:nowrap}
+.btn-primary{background:linear-gradient(120deg,var(--indigo),var(--violet));color:#fff;box-shadow:0 10px 26px rgba(91,33,182,.34)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 14px 32px rgba(91,33,182,.42)}
+.btn-primary:active{transform:translateY(0)}
+.btn-ghost{background:var(--glass-strong);border:1px solid var(--glass-bd);color:var(--ink2);box-shadow:var(--sh-sm)}
+.btn-ghost:hover{background:#fff}
+.btn-sm{padding:8px 15px;font-size:13px;border-radius:11px}
+.filelist{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px}
+.chip{font-size:12.5px;font-weight:700;color:var(--ink2);background:var(--glass-strong);border:1px solid var(--glass-bd);
+  padding:6px 14px;border-radius:999px;box-shadow:var(--sh-sm)}
+.banner{padding:13px 18px;border-radius:14px;font-size:13.5px;margin-top:18px;font-weight:600}
+.banner.info{background:rgba(79,70,229,.1);border:1px solid rgba(79,70,229,.28);color:#4338ca}
+.banner.warn{background:var(--mod-bg);border:1px solid var(--mod-bd);color:#92400e}
+.banner b{font-weight:800}
+
+/* 結果 */
+.result-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.result-head h2{font-size:18px;font-weight:800}
+.result-head .meta{font-size:13px;color:var(--muted)}
+.spacer{flex:1}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 12px}
+/* iPad（平板） */
+@media(max-width:1024px){
+  .wrap{padding:18px 24px 60px}
+}
+@media(max-width:820px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .wrap{padding:16px 18px 56px}
+}
+/* iPhone（手機） */
+@media(max-width:560px){
+  .wrap{padding:10px 12px}
+  .head h1{font-size:20px}
+  .head p{font-size:12px}
+  .section{padding:14px}
+  .uploader{padding:22px 14px}
+  .stats{gap:10px;margin:12px 0 8px}
+  .stat{padding:14px 15px}
+  .stat .n{font-size:25px}
+  .stat .l{font-size:12px}
+  .bar{gap:8px}
+  .search-in{width:100%}
+  .searchcol{width:100%;align-items:stretch}
+  .result-head{flex-direction:column;align-items:flex-start;gap:8px}
+  .subtab{font-size:13px;padding:8px 13px}
+  .sortbar{gap:8px}
+  .sortbtn{font-size:13px;padding:8px 12px}
+  thead th,tbody td{padding:9px 10px;font-size:13px}
+  .name-c{min-width:130px}
+  .addr-c{min-width:150px}
+}
+.stat{padding:11px 16px;border-radius:13px}
+.stat .n{font-size:25px;font-weight:800;line-height:1.04;letter-spacing:-.5px}
+.stat .l{font-size:12px;font-weight:700;color:var(--muted);margin-top:1px}
+.stat.add .n{color:var(--add)} .stat.rem .n{color:var(--rem)} .stat.mod .n{color:var(--mod)} .stat.same .n{color:var(--indigo)}
+
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px}
+.subtabs{display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;min-width:0;max-width:100%;padding-bottom:2px}
+.subtab{font-family:inherit;font-weight:700;font-size:13.5px;padding:9px 17px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--glass-bd);background:var(--glass);color:var(--ink2);transition:.15s}
+.subtab.active{color:#fff;border-color:transparent}
+.subtab.active[data-k=all]{background:linear-gradient(120deg,var(--indigo),var(--violet))}
+.subtab.active[data-k=added]{background:var(--add)} .subtab.active[data-k=removed]{background:var(--rem)} .subtab.active[data-k=modified]{background:var(--mod)}
+.sub-badge{font-weight:800;margin-left:6px}
+.sortbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.sortbar .sl{font-size:13px;font-weight:800;color:var(--muted)}
+.sortbtn{font-family:inherit;font-weight:700;font-size:13.5px;padding:9px 16px;border-radius:12px;cursor:pointer;
+  border:1px solid var(--glass-bd);background:var(--glass-strong);color:var(--ink2);box-shadow:var(--sh-sm);transition:.15s}
+.sortbtn:hover{background:#fff;transform:translateY(-1px)}
+.sortbtn.on{background:linear-gradient(120deg,var(--indigo),var(--violet));color:#fff;border-color:transparent;box-shadow:0 8px 20px rgba(91,33,182,.32)}
+.sortbtn.clr{background:var(--rem);color:#fff;border-color:transparent;box-shadow:0 8px 20px rgba(190,18,60,.3)}
+.sortbtn.clr:hover{background:#a30d33;color:#fff}
+.filterbtn{font-family:inherit;font-weight:700;font-size:13.5px;padding:9px 16px;border-radius:12px;cursor:pointer;border:1px solid var(--glass-bd);background:var(--glass-strong);color:var(--ink2);box-shadow:var(--sh-sm);transition:.15s}
+.filterbtn:hover{background:#fff;transform:translateY(-1px)}
+.filterbtn.on{background:linear-gradient(120deg,var(--indigo),var(--violet));color:#fff;border-color:transparent;box-shadow:0 8px 20px rgba(91,33,182,.32)}
+.search-in{font-family:inherit;font-size:14px;padding:10px 16px;border-radius:13px;border:1px solid var(--glass-bd);
+  background:var(--glass-strong);outline:none;width:260px;box-shadow:var(--sh-sm)}
+.search-in:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(79,70,229,.16)}
+.searchcol{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.cbtn{font-family:inherit;font-weight:700;font-size:13.5px;padding:9px 15px;border-radius:12px;cursor:pointer;border:1px solid var(--glass-bd);background:var(--glass-strong);color:var(--ink2);box-shadow:var(--sh-sm);transition:.15s;white-space:nowrap}
+.cbtn:hover{background:#fff;transform:translateY(-1px)}
+.cbtn.active,.cbtn.primary{background:linear-gradient(120deg,var(--indigo),var(--violet));color:#fff;border-color:transparent;box-shadow:0 8px 20px rgba(91,33,182,.32)}
+.cbtn.active:hover,.cbtn.primary:hover{color:#fff}
+.cgroup{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.vsep{width:1px;height:22px;background:var(--line);flex:none}
+#listView{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
+#topbar{flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}
+.g{display:contents}
+.gl{font-size:12.5px;font-weight:800;color:var(--muted)}
+#topbar .search-in{width:240px;flex:0 1 240px}
+@media(max-width:600px){
+  #topbar{flex-direction:column;align-items:stretch;gap:10px}
+  .g{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}
+  #topbar .search-in{flex:1 1 auto;width:auto;min-width:120px}
+}
+.cbtn.fb,.cbtn.sb{font-size:13px;padding:7px 13px}
+.cbtn.fb{position:relative}
+.cnt{position:absolute;top:-8px;right:-6px;display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--indigo);color:#fff;font-size:10.5px;font-weight:800;line-height:1;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(40,33,90,.25)}
+
+.subview{display:none}.subview.active{display:flex;flex-direction:column;min-height:0;flex:1}
+.tablewrap{overflow:auto;-webkit-overflow-scrolling:touch;border-radius:14px;flex:1;min-height:0}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead th{text-align:left;font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:.5px;
+  padding:11px 13px;border-bottom:1px solid var(--line);white-space:nowrap;background:#f3f1fb;position:sticky;top:0;z-index:2}
+tbody td{padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:hover{background:rgba(255,255,255,.5)}
+.name-c{font-weight:700;min-width:170px}
+.addr-c{color:var(--muted);min-width:190px;font-size:13px}
+.idx{color:var(--faint);width:38px;font-variant-numeric:tabular-nums}
+/* 「全部」表格：緊湊排版，電腦版一個畫面看完所有欄位 */
+.alltable{font-size:12.5px;width:auto}
+.alltable thead th{font-size:11.5px;padding:8px 10px;white-space:nowrap;line-height:1.3}
+.alltable td{padding:7px 10px;white-space:nowrap;vertical-align:top}
+.alltable td.name-c{white-space:normal;min-width:96px;max-width:170px}
+.alltable td.addr-c{white-space:normal;min-width:120px;max-width:240px;font-size:12px}
+.lb{border-left:3px solid transparent;padding-left:11px}
+#sub-added .lb{border-left-color:var(--add)} #sub-removed .lb{border-left-color:var(--rem)} #sub-modified .lb{border-left-color:var(--mod)}
+.chg{display:flex;flex-direction:column;gap:5px}
+.chg-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px}
+.chg-f{font-weight:800;color:var(--mod);background:var(--mod-bg);border:1px solid var(--mod-bd);padding:1px 9px;border-radius:7px;font-size:12px}
+.chg-o{color:var(--rem);text-decoration:line-through;opacity:.85}
+.chg-n{color:var(--add);font-weight:800}
+.arrow{color:var(--faint)}
+#sub-all .lb{border-left-color:var(--indigo)}
+.tag{display:inline-block;font-size:11.5px;font-weight:800;padding:3px 11px;border-radius:999px;letter-spacing:.3px;white-space:nowrap}
+.tag.add{color:var(--add);background:var(--add-bg);border:1px solid var(--add-bd)}
+.tag.rem{color:var(--rem);background:var(--rem-bg);border:1px solid var(--rem-bd)}
+.tag.mod{color:var(--mod);background:var(--mod-bg);border:1px solid var(--mod-bd)}
+.tag.same{color:var(--indigo);background:rgba(79,70,229,.1);border:1px solid rgba(79,70,229,.28)}
+.empty{text-align:center;color:var(--muted);padding:44px 20px;font-size:14px}
+/* 手機卡片式介面 */
+.cards{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow:auto}
+.ucard{background:rgba(255,255,255,.78);border:1px solid var(--glass-bd);border-radius:14px;box-shadow:var(--sh-sm);padding:12px 14px}
+.ucard-top{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.ucard-right{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.ucard-toggle{font-size:13px;font-weight:800;color:var(--indigo)}
+.ucard-toggle::after{content:'▾'}
+.ucard.open .ucard-toggle::after{content:'▴'}
+.ucard-body{display:none;margin-top:8px}
+.ucard.open .ucard-body{display:block}
+.ucard-name{font-weight:800;font-size:14.5px;line-height:1.4}
+.ucard-row{display:flex;justify-content:space-between;gap:14px;font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line)}
+.ucard-row .k{color:var(--muted);font-weight:700;white-space:nowrap}
+.ucard-row .v{text-align:right;word-break:break-word}
+
+.foot{text-align:center;color:var(--muted);font-size:12px;margin-top:28px;line-height:1.9}
+.hide{display:none!important}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);z-index:90;
+  background:var(--ink);color:#fff;font-size:13.5px;font-weight:600;padding:12px 22px;border-radius:13px;
+  box-shadow:0 16px 40px rgba(0,0,0,.3);opacity:0;transition:.3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="blob a"></div><div class="blob b"></div><div class="blob c"></div>
+
+<div class="wrap">
+  <div class="bar glass" id="topbar">
+    <div class="g g-main">
+      <button class="cbtn primary" id="btnPick">上傳</button>
+      <button class="cbtn needdata hide" id="btnReset">清除</button>
+      <input id="search" class="search-in needdata hide" placeholder="搜尋機構名稱 / 地址">
+    </div>
+    <div class="g g-status needdata hide">
+      <span class="gl">狀態</span>
+      <button class="cbtn fb active" data-st="all" id="f-all">全部<span class="cnt" id="c-all">0</span></button>
+      <button class="cbtn fb" data-st="added" id="f-added">新增<span class="cnt" id="c-added">0</span></button>
+      <button class="cbtn fb" data-st="removed" id="f-removed">刪除<span class="cnt" id="c-removed">0</span></button>
+      <button class="cbtn fb" data-st="modified" id="f-modified">異動<span class="cnt" id="c-modified">0</span></button>
+      <button class="cbtn fb" data-st="same" id="f-same">未變動<span class="cnt" id="c-same">0</span></button>
+    </div>
+    <div class="g g-sort needdata hide">
+      <span class="gl">排序</span>
+      <button class="cbtn sb" data-sort="monthly">每月垃圾量</button>
+      <button class="cbtn sb" data-sort="contract">契約期限</button>
+    </div>
+  </div>
+
+  <div class="section glass hide" id="resultSection">
+    <div id="listView"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ====== 比對核心（key = 機構名稱 + 地址） ====== */
+function normVal(v){ if(v==null) return ''; return String(v).replace(/\s+/g,' ').trim(); }
+function isNumeric(s){ return /^-?\d+(\.\d+)?$/.test(s); }
+function valEq(a,b){ if(a===b) return true; if(isNumeric(a)&&isNumeric(b)) return parseFloat(a)===parseFloat(b); return false; }
+function parseDate(s){ if(!s) return null; s=String(s).trim(); const m=s.match(/^(\d{3,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/); if(m){ let y=+m[1]; if(y<1911) y+=1911; return new Date(y,(+m[2])-1,+m[3]); } return null; }
+function locateCols(h){ const find=(...k)=>{for(let i=0;i<h.length;i++){const x=normVal(h[i]);if(k.some(q=>x.includes(q)))return i;}return -1;};
+  return{name:find('機構名稱'),address:find('地址'),contact:find('聯絡人'),phone:find('電話'),contract:find('契約期限'),monthly:find('每月垃圾量')};}
+function buildIndex(aoa){ const headers=(aoa[0]||[]).map(normVal); const col=locateCols(headers);
+  const nameIdx=col.name>=0?col.name:1, addrIdx=col.address>=0?col.address:10;
+  const map=new Map(), order=[]; let used=0;
+  for(let r=1;r<aoa.length;r++){ const raw=aoa[r]||[]; const cells=headers.map((_,i)=>normVal(raw[i]));
+    const nm=cells[nameIdx]||'', ad=cells[addrIdx]||''; if(nm===''&&ad==='') continue;
+    let key=nm+''+ad; while(map.has(key)) key+='#';
+    map.set(key,{key,name:nm,address:ad,cells}); order.push(key); used++; }
+  return {headers,col,nameIdx,addrIdx,map,order,count:used}; }
+function compareIdx(o,n){ const added=[],removed=[],modified=[]; let unchanged=0; const cmp=[];
+  for(let i=0;i<n.headers.length;i++){ if(i===n.nameIdx||i===n.addrIdx) continue; cmp.push(i); }
+  for(const k of n.order){ const nr=n.map.get(k); if(!o.map.has(k)){ added.push(nr); continue; }
+    const or=o.map.get(k), diffs=[];
+    for(const i of cmp){ const ov=or.cells[i]||'', nv=nr.cells[i]||''; if(!valEq(ov,nv)) diffs.push({field:n.headers[i]||('欄'+(i+1)),old:ov,now:nv}); }
+    if(diffs.length) modified.push(Object.assign({},nr,{diffs})); else unchanged++; }
+  for(const k of o.order){ if(!n.map.has(k)) removed.push(o.map.get(k)); }
+  return {added,removed,modified,unchanged}; }
+
+function digitsOf(name){ const m=(name||'').match(/\d+/g); return m?parseInt(m.join('').slice(0,12),10):null; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2600); }
+
+/* ====== 狀態（純記憶體，不寫入任何儲存空間） ====== */
+let current=null; // {result,newIdx,addedKeys,modKeys}
+let allSort={key:null,dir:1};
+let allStatusFilter='all';
+const SORT_DEFAULT={monthly:-1,contract:1};
+const HDR_RENAME={'事業產源機構名稱':'機構名稱','事業產源聯絡人':'聯絡人','事業機構產源地址':'地址','事業機構產源連絡電話':'電話'};
+const isPhone=()=>window.matchMedia('(max-width:600px)').matches;
+function cardRow(k,v){ return (v==null||v==='')?'':'<div class="ucard-row"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span></div>'; }
+
+function readXlsx(file){ return new Promise((res,rej)=>{ const fr=new FileReader();
+  fr.onload=e=>{ try{ const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    res({name:file.name, idx:buildIndex(XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}))});
+  }catch(err){ rej(err); } };
+  fr.onerror=()=>rej(new Error('讀取失敗')); fr.readAsArrayBuffer(file); }); }
+
+async function handleFiles(files){
+  files=[...files].filter(f=>/\.(xlsx|xls)$/i.test(f.name));
+  if(files.length<2){ toast('請一次選取兩個 Excel 檔'); return; }
+  try{
+    const parsed=[]; for(const f of files) parsed.push(await readXlsx(f));
+    const withN=parsed.map(p=>({p,n:digitsOf(p.name)}));
+    const allN=withN.every(x=>x.n!=null);
+    withN.sort((a,b)=> allN ? a.n-b.n : a.p.name.localeCompare(b.p.name));
+    const oldP=withN[0].p, newP=withN[withN.length-1].p;
+    const result=compareIdx(oldP.idx,newP.idx);
+    current={result,newIdx:newP.idx,
+      addedKeys:new Set(result.added.map(r=>r.key)),
+      modKeys:new Set(result.modified.map(r=>r.key)),
+      removedKeys:new Set(result.removed.map(r=>r.key))};
+    allSort={key:null,dir:1}; allStatusFilter='all';
+    showResult(result, oldP.name+' → '+newP.name);
+  }catch(err){ toast('讀取失敗：'+err.message); }
+}
+
+function showResult(){
+  document.getElementById('resultSection').classList.remove('hide');
+  document.querySelectorAll('.needdata').forEach(e=>e.classList.remove('hide'));
+  document.getElementById('search').value='';
+  render();
+}
+function matchQ(row,q){ if(!q) return true; q=q.toLowerCase(); return (row.name||'').toLowerCase().includes(q)||(row.address||'').toLowerCase().includes(q); }
+function sortAllRows(rows){
+  if(!allSort.key) return rows;
+  const idx = allSort.key==='monthly'?current.newIdx.col.monthly:current.newIdx.col.contract;
+  const dir=allSort.dir;
+  const getv=row=>{ const raw=(idx>=0&&row.cells&&row.cells[idx]!=null)?row.cells[idx]:'';
+    if(allSort.key==='monthly'){ const f=parseFloat(raw); return isNaN(f)?null:f; }
+    const d=parseDate(raw); return d?d.getTime():null; };
+  return rows.slice().sort((a,b)=>{ const va=getv(a),vb=getv(b);
+    if(va==null&&vb==null) return 0; if(va==null) return 1; if(vb==null) return -1; return (va-vb)*dir; });
+}
+function getRows(){ const n=current.newIdx, R=current.result;
+  if(allStatusFilter==='added') return R.added.slice();
+  if(allStatusFilter==='removed') return R.removed.slice();
+  if(allStatusFilter==='modified') return R.modified.slice();
+  if(allStatusFilter==='same') return n.order.map(k=>n.map.get(k)).filter(r=>!current.addedKeys.has(r.key)&&!current.modKeys.has(r.key));
+  return n.order.map(k=>n.map.get(k));
+}
+function statusTag(row){ if(current.removedKeys.has(row.key)) return '<span class="tag rem">刪除</span>';
+  if(current.addedKeys.has(row.key)) return '<span class="tag add">新增</span>';
+  if(current.modKeys.has(row.key)) return '<span class="tag mod">異動</span>';
+  return '<span class="tag same">未變動</span>'; }
+function bindCards(el){ el.querySelectorAll('.ucard-top').forEach(t=>t.onclick=()=>t.parentElement.classList.toggle('open')); }
+function renderFullInto(el,rows){
+  const idx=current.newIdx, headers=idx.headers;
+  const hideCol=i=>{ const x=headers[i]||''; return /廠別/.test(x)||/代清業/.test(x); };
+  if(!rows.length){ el.innerHTML='<div class="empty">沒有資料</div>'; return; }
+  if(isPhone()){
+    let h='<div class="cards">';
+    rows.forEach(row=>{ h+='<div class="ucard"><div class="ucard-top"><span class="ucard-name">'+esc(row.name)+'</span><span class="ucard-right">'+statusTag(row)+'<span class="ucard-toggle"></span></span></div><div class="ucard-body">';
+      headers.forEach((hd,ci)=>{ if(hideCol(ci)||ci===idx.nameIdx) return; h+=cardRow(HDR_RENAME[hd]||hd, row.cells[ci]!=null?row.cells[ci]:''); });
+      h+='</div></div>'; });
+    el.innerHTML=h+'</div>'; bindCards(el); return;
+  }
+  let h='<table class="alltable"><thead><tr><th>#</th><th>狀態</th>';
+  headers.forEach((hd,i)=>{ if(hideCol(i)) return; h+='<th>'+esc(HDR_RENAME[hd]||hd)+'</th>'; });
+  h+='</tr></thead><tbody>';
+  rows.forEach((row,i)=>{ h+='<tr><td class="idx lb">'+(i+1)+'</td><td>'+statusTag(row)+'</td>';
+    headers.forEach((hd,ci)=>{ if(hideCol(ci)) return; const v=row.cells[ci]!=null?row.cells[ci]:'';
+      const cls=ci===idx.nameIdx?' class="name-c"':(ci===idx.addrIdx?' class="addr-c"':''); h+='<td'+cls+'>'+esc(v)+'</td>'; });
+    h+='</tr>'; });
+  el.innerHTML=h+'</tbody></table>';
+}
+function renderModInto(el,rows){
+  if(!rows.length){ el.innerHTML='<div class="empty">沒有資料</div>'; return; }
+  if(isPhone()){
+    let h='<div class="cards">';
+    rows.forEach(row=>{ let d=''; row.diffs.forEach(x=>{ d+='<div class="ucard-row"><span class="k">'+esc(x.field)+'</span><span class="v"><span class="chg-o">'+esc(x.old||'(空)')+'</span> → <span class="chg-n">'+esc(x.now||'(空)')+'</span></span></div>'; });
+      h+='<div class="ucard"><div class="ucard-top"><span class="ucard-name">'+esc(row.name)+'</span><span class="ucard-right"><span class="tag mod">異動</span><span class="ucard-toggle"></span></span></div><div class="ucard-body">'+cardRow('地址',row.address)+d+'</div></div>'; });
+    el.innerHTML=h+'</div>'; bindCards(el); return;
+  }
+  let h='<table><thead><tr><th>#</th><th>機構名稱</th><th>地址</th><th>變更內容（舊 → 新）</th></tr></thead><tbody>';
+  rows.forEach((row,i)=>{ let c='<div class="chg">'; row.diffs.forEach(d=>{ c+='<div class="chg-row"><span class="chg-f">'+esc(d.field)+'</span><span class="chg-o">'+esc(d.old||'(空)')+'</span><span class="arrow">→</span><span class="chg-n">'+esc(d.now||'(空)')+'</span></div>'; }); c+='</div>';
+    h+='<tr><td class="idx lb">'+(i+1)+'</td><td class="name-c">'+esc(row.name)+'</td><td class="addr-c">'+esc(row.address)+'</td><td>'+c+'</td></tr>'; });
+  el.innerHTML=h+'</tbody></table>';
+}
+function render(){
+  if(!current) return;
+  const n=current.newIdx, R=current.result;
+  document.getElementById('c-all').textContent=n.count;
+  document.getElementById('c-added').textContent=R.added.length;
+  document.getElementById('c-removed').textContent=R.removed.length;
+  document.getElementById('c-modified').textContent=R.modified.length;
+  document.getElementById('c-same').textContent=R.unchanged;
+  document.querySelectorAll('#topbar .fb').forEach(b=>b.classList.toggle('active',b.dataset.st===allStatusFilter));
+  document.querySelectorAll('#topbar .sb').forEach(b=>{ const k=b.dataset.sort,on=allSort.key===k;
+    b.classList.toggle('active',on);
+    const base=k==='monthly'?'每月垃圾量':'契約期限';
+    b.textContent= on ? base+'　'+(k==='monthly'?(allSort.dir>0?'少→多':'多→少'):(allSort.dir>0?'早→晚':'晚→早')) : base; });
+  const q=document.getElementById('search').value.trim();
+  let rows=getRows().filter(x=>matchQ(x,q));
+  rows=sortAllRows(rows);
+  const el=document.getElementById('listView');
+  if(allStatusFilter==='modified') renderModInto(el,rows); else renderFullInto(el,rows);
+}
+
+function reset(){
+  current=null;
+  document.getElementById('resultSection').classList.add('hide');
+  document.querySelectorAll('.needdata').forEach(e=>e.classList.add('hide'));
+  document.getElementById('search').value='';
+  toast('已清除');
+}
+
+/* ====== 事件 ====== */
+const input=document.createElement('input'); input.type='file'; input.multiple=true; input.accept='.xlsx,.xls'; input.style.display='none'; document.body.appendChild(input);
+document.getElementById('btnPick').onclick=()=>input.click();
+input.onchange=e=>{ handleFiles(e.target.files); input.value=''; };
+window.addEventListener('dragover',e=>e.preventDefault());
+window.addEventListener('drop',e=>{ e.preventDefault(); if(e.dataTransfer&&e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+document.querySelectorAll('#topbar .fb').forEach(b=>b.onclick=()=>{ allStatusFilter=b.dataset.st; render(); });
+document.querySelectorAll('#topbar .sb').forEach(b=>b.onclick=()=>{ const k=b.dataset.sort;
+  if(allSort.key!==k) allSort={key:k,dir:SORT_DEFAULT[k]};
+  else if(allSort.dir===SORT_DEFAULT[k]) allSort={key:k,dir:-SORT_DEFAULT[k]};
+  else allSort={key:null,dir:1};
+  render(); });
+document.getElementById('search').oninput=render;
+document.getElementById('btnReset').onclick=reset;
+let _wasPhone=isPhone();
+window.addEventListener('resize',()=>{ const now=isPhone(); if(now!==_wasPhone){ _wasPhone=now; if(current) render(); } });
+</script>
+</body>
+</html>
